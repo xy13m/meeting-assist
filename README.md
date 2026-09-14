@@ -220,6 +220,21 @@ uv build
 
 CLAUDE.md lists the behaviours a change must not break.
 
+### Releasing
+
+Bump `version` in `pyproject.toml`, commit, then push a tag with the same
+number prefixed by `v`:
+
+```
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The Release workflow checks the tag against `pyproject.toml`, runs the
+checks above, uploads to PyPI, and creates a GitHub Release with the built
+files. Tags that do not match the declared version fail before anything is
+published.
+
 ## License
 
 MIT.

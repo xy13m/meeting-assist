@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          python-version: "3.14"
+      - name: Check the tag matches pyproject.toml
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(uv version --color never --short)"
+          if [ "$tag" != "$version" ]; then
+            echo "tag v$tag does not match pyproject.toml version $version" >&2
+            exit 1
+          fi
+      - run: uv sync --all-groups
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+      - run: uv run pytest
+      - run: uv build
+      - name: Check the skill ships in the wheel
+        run: unzip -l dist/*.whl | grep -q "meeting_assist/skill/SKILL.md"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  publish-pypi:
+    needs: check
+    runs-on: ubuntu-latest
+    # Trusted publishing: PyPI accepts the OIDC token this job presents, so
+    # there is no API token in the repository secrets. The environment name
+    # must match the publisher registered on PyPI.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/meeting-assist/${{ github.ref_name }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.14.2
+
+  github-release:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
+      - run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}

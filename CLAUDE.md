@@ -100,6 +100,24 @@ refers to when the turn was held (unformatted fallback) until shutdown.
   `skill/` directory. CI checks that the wheel contains
   `meeting_assist/skill/SKILL.md`.
 
+## Releasing
+
+- The version is declared once, in `pyproject.toml`. `__version__` reads it
+  from the installed metadata; `tests/test_version.py` fails if a second
+  copy appears.
+- `.github/workflows/release.yml` runs on tags matching `v*`. It fails
+  unless the tag equals `v` plus the pyproject version, re-runs every check
+  from CI, publishes to PyPI through trusted publishing (the `pypi`
+  environment, no API token), then creates a GitHub Release with the wheel
+  and sdist attached. The Release is created only after PyPI accepted the
+  upload.
+- `uv version` prints colour codes even when piped; the workflow passes
+  `--color never` before comparing.
+- Who may push a `v*` tag is enforced by a tag ruleset and a required
+  reviewer on the `pypi` environment, both configured in the repository
+  settings. GitHub Free offers neither on a private repository; set them up
+  once the repository is public.
+
 ## Checks
 
 ```
