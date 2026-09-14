@@ -1,3 +1,7 @@
 """Live meeting transcription and translation in the terminal."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+# The version lives in pyproject.toml only; the release workflow checks the
+# git tag against it.
+__version__ = version("meeting-assist")
