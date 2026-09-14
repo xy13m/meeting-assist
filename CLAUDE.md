@@ -113,10 +113,11 @@ refers to when the turn was held (unformatted fallback) until shutdown.
   upload.
 - `uv version` prints colour codes even when piped; the workflow passes
   `--color never` before comparing.
-- Who may push a `v*` tag is enforced by a tag ruleset and a required
-  reviewer on the `pypi` environment, both configured in the repository
-  settings. GitHub Free offers neither on a private repository; set them up
-  once the repository is public.
+- Who may push a `v*` tag is enforced in the repository settings, not in
+  the workflow: a tag ruleset lets only admins create, move, or delete
+  `v*` tags, and the `pypi` environment requires a reviewer's approval
+  before the publish job runs. Both need the repository to stay public
+  (GitHub Free does not offer them on private repositories).
 
 ## Checks
 
