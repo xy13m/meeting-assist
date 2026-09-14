@@ -15,11 +15,12 @@ from meeting_assist.audio import AudioSource, DeviceNotFound, DeviceSource, File
 from meeting_assist.config import ConfigError, Settings, load_settings
 from meeting_assist.context import MeetingContext, derive_keyterms, load_context
 from meeting_assist.language import for_code
-from meeting_assist.llm import LLM, UnknownModelError, create_llm
+from meeting_assist.llm import LLM, LLMError, UnknownModelError, create_llm
 from meeting_assist.logging_setup import file_logging
 from meeting_assist.pipeline import build_pipeline
 from meeting_assist.store import Store
 from meeting_assist.stt import DEFAULT_LANGUAGES, create_transcriber
+from meeting_assist.summarizer import EmptyTranscript, summarize
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +63,11 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="CODES",
         help="comma-separated language codes to recognise, e.g. en,zh (default: en)",
     )
+
+    summ = sub.add_parser("summarize", help="write summary.md for a recorded meeting")
+    summ.add_argument("meeting_dir", type=Path, help="meeting directory written by listen")
+    _add_model_and_target(summ)
+    summ.add_argument("--force", action="store_true", help="overwrite an existing summary.md")
     return p
 
 
@@ -145,9 +151,32 @@ def run_listen(args: argparse.Namespace) -> int:
     return 2 if reason else 0
 
 
+# -- summarize -----------------------------------------------------------------
+
+
+def run_summarize(args: argparse.Namespace) -> int:
+    meeting_dir: Path = args.meeting_dir
+    if not (meeting_dir / "transcript.jsonl").is_file():
+        raise UsageError(f"no transcript.jsonl in {meeting_dir}")
+    out_path = meeting_dir / "summary.md"
+    if out_path.exists() and not args.force:
+        raise UsageError(f"{out_path} already exists; pass --force to overwrite it")
+    settings = _settings(args)
+    llm = _llm(settings)
+    try:
+        text = summarize(meeting_dir, llm, for_code(settings.target))
+    except EmptyTranscript as exc:
+        raise UsageError(str(exc)) from exc
+    except LLMError as exc:
+        raise UsageError(f"summary request failed: {exc}") from exc
+    out_path.write_text(text.rstrip() + "\n", encoding="utf-8")
+    print(f"Summary written to {out_path}", file=sys.stderr)
+    return 0
+
+
 # -- entry point ---------------------------------------------------------------
 
-COMMANDS = {"listen": run_listen}
+COMMANDS = {"listen": run_listen, "summarize": run_summarize}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

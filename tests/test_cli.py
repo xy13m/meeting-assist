@@ -207,3 +207,75 @@ def test_listen_reports_early_stop_and_exits_2(env, fake_llm, monkeypatch, capsy
     assert cli.main(["listen", "--wav", str(wav)]) == 2
     err = capsys.readouterr().err
     assert "Stopped early" in err and "gave up reconnecting" in err
+
+
+# -- summarize -----------------------------------------------------------------
+
+
+def write_meeting_dir(root: Path) -> Path:
+    from meeting_assist import transcript
+    from meeting_assist.events import FinalTurn
+    from tests.conftest import T0
+
+    d = root / "20260912-100000"
+    d.mkdir(parents=True)
+    records = [
+        transcript.meta_record(T0, "zh-TW", ("en",)),
+        transcript.turn_record(FinalTurn(0, "A", "Hello there.", T0, T0)),
+    ]
+    (d / "transcript.jsonl").write_text("".join(transcript.encode(r) for r in records))
+    return d
+
+
+def test_parse_args_summarize():
+    ns = cli.parse_args(["summarize", "meetings/x", "--model", "gpt-4.1-mini", "--force"])
+    assert ns.command == "summarize"
+    assert ns.meeting_dir == Path("meetings/x")
+    assert ns.model == "gpt-4.1-mini"
+    assert ns.force is True
+
+
+def test_summarize_writes_summary_md(env, fake_llm, capsys):
+    fake_llm.responses = ["## Summary\n\nShort.\n\n## Action items\n\n- none\n"]
+    d = write_meeting_dir(env / "meetings")
+    assert cli.main(["summarize", str(d)]) == 0
+    assert (d / "summary.md").read_text() == "## Summary\n\nShort.\n\n## Action items\n\n- none\n"
+    assert str(d / "summary.md") in capsys.readouterr().err
+
+
+def test_summarize_refuses_to_overwrite_without_force(env, fake_llm, capsys):
+    fake_llm.responses = ["new"]
+    d = write_meeting_dir(env / "meetings")
+    (d / "summary.md").write_text("old")
+    assert cli.main(["summarize", str(d)]) == 1
+    assert (d / "summary.md").read_text() == "old"
+    assert "--force" in capsys.readouterr().err
+    assert cli.main(["summarize", str(d), "--force"]) == 0
+    assert (d / "summary.md").read_text() == "new\n"
+
+
+def test_summarize_reports_missing_dir_and_empty_transcript(env, fake_llm, capsys):
+    assert cli.main(["summarize", str(env / "nope")]) == 1
+    assert "transcript.jsonl" in capsys.readouterr().err
+    d = env / "empty"
+    d.mkdir()
+    (d / "transcript.jsonl").write_text("")
+    assert cli.main(["summarize", str(d)]) == 1
+    assert "no turns" in capsys.readouterr().err
+
+
+def test_summarize_needs_the_provider_key_but_not_assemblyai(env, monkeypatch, capsys):
+    monkeypatch.delenv("ASSEMBLYAI_API_KEY")
+    monkeypatch.delenv("ANTHROPIC_API_KEY")
+    d = write_meeting_dir(env / "meetings")
+    assert cli.main(["summarize", str(d)]) == 1
+    assert "ANTHROPIC_API_KEY" in capsys.readouterr().err
+
+
+def test_summarize_reports_llm_failure(env, fake_llm, capsys):
+    from meeting_assist.llm import LLMError
+
+    fake_llm.responses = [LLMError("overloaded")]
+    d = write_meeting_dir(env / "meetings")
+    assert cli.main(["summarize", str(d)]) == 1
+    assert "overloaded" in capsys.readouterr().err
