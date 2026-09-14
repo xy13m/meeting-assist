@@ -1,0 +1,65 @@
+[project]
+name = "meeting-assist"
+version = "0.1.0"
+description = "Live meeting transcription and translation in the terminal, with a Claude Code skill that suggests what to say next"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.14"
+authors = [{ name = "Xylem Yang" }]
+keywords = ["meeting", "transcription", "translation", "assemblyai", "claude", "openai"]
+classifiers = [
+    "Environment :: Console",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Sound/Audio :: Speech",
+]
+dependencies = [
+    "assemblyai",
+    "anthropic",
+    "openai",
+    "sounddevice",
+    "rich",
+    "python-dotenv",
+    "opencc-python-reimplemented",
+]
+
+[project.urls]
+Repository = "https://github.com/xy13m/meeting-assist"
+
+[project.scripts]
+meeting-assist = "meeting_assist.cli:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff", "mypy"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/meeting_assist"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/meeting_assist", "tests", "README.md", "LICENSE", "CLAUDE.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: needs real API keys and network"]
+addopts = "-m 'not integration'"
+
+[tool.ruff]
+line-length = 100
+target-version = "py314"
+exclude = ["docs"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["sounddevice", "opencc", "assemblyai.*"]
+ignore_missing_imports = true
