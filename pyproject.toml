@@ -41,7 +41,10 @@ build-backend = "hatchling.build"
 packages = ["src/meeting_assist"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/meeting_assist", "tests", "README.md", "LICENSE", "CLAUDE.md"]
+# only-include (not include): the repo's .claude/skills/meeting-assist is a
+# symlink into the package, and walking it makes hatchling skip the real
+# skill directory.
+only-include = ["src/meeting_assist", "tests", "README.md", "LICENSE", "CLAUDE.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

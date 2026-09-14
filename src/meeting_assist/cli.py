@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
 import sys
 import wave
 from collections.abc import Sequence
@@ -18,6 +19,7 @@ from meeting_assist.language import for_code
 from meeting_assist.llm import LLM, LLMError, UnknownModelError, create_llm
 from meeting_assist.logging_setup import file_logging
 from meeting_assist.pipeline import build_pipeline
+from meeting_assist.skill import SKILL_NAME, skill_path
 from meeting_assist.store import Store
 from meeting_assist.stt import DEFAULT_LANGUAGES, create_transcriber
 from meeting_assist.summarizer import EmptyTranscript, summarize
@@ -68,6 +70,10 @@ def build_parser() -> argparse.ArgumentParser:
     summ.add_argument("meeting_dir", type=Path, help="meeting directory written by listen")
     _add_model_and_target(summ)
     summ.add_argument("--force", action="store_true", help="overwrite an existing summary.md")
+
+    skill = sub.add_parser("install-skill", help="install the Claude Code skill")
+    skill.add_argument("--dest", type=Path, help="skills directory (default: ~/.claude/skills)")
+    skill.add_argument("--force", action="store_true", help="overwrite an installed skill")
     return p
 
 
@@ -174,9 +180,25 @@ def run_summarize(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- install-skill -------------------------------------------------------------
+
+DEFAULT_SKILLS_DIR = Path("~/.claude/skills")
+
+
+def run_install_skill(args: argparse.Namespace) -> int:
+    dest_dir: Path = (args.dest or DEFAULT_SKILLS_DIR).expanduser() / SKILL_NAME
+    target = dest_dir / "SKILL.md"
+    if target.exists() and not args.force:
+        raise UsageError(f"{target} already exists; pass --force to overwrite it")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(skill_path(), target)
+    print(f"Skill installed to {target}", file=sys.stderr)
+    return 0
+
+
 # -- entry point ---------------------------------------------------------------
 
-COMMANDS = {"listen": run_listen, "summarize": run_summarize}
+COMMANDS = {"listen": run_listen, "summarize": run_summarize, "install-skill": run_install_skill}
 
 
 def main(argv: Sequence[str] | None = None) -> int:

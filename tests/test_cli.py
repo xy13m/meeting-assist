@@ -279,3 +279,43 @@ def test_summarize_reports_llm_failure(env, fake_llm, capsys):
     d = write_meeting_dir(env / "meetings")
     assert cli.main(["summarize", str(d)]) == 1
     assert "overloaded" in capsys.readouterr().err
+
+
+# -- install-skill -------------------------------------------------------------
+
+
+def test_parse_args_install_skill():
+    ns = cli.parse_args(["install-skill", "--dest", "x", "--force"])
+    assert ns.command == "install-skill"
+    assert ns.dest == Path("x")
+    assert ns.force is True
+    assert cli.parse_args(["install-skill"]).dest is None
+
+
+def test_install_skill_copies_the_packaged_skill(env, capsys):
+    from meeting_assist.skill import skill_path
+
+    dest = env / "skills"
+    assert cli.main(["install-skill", "--dest", str(dest)]) == 0
+    installed = dest / "meeting-assist" / "SKILL.md"
+    assert installed.read_text() == skill_path().read_text()
+    assert str(installed) in capsys.readouterr().err
+
+
+def test_install_skill_refuses_to_overwrite_without_force(env, capsys):
+    dest = env / "skills"
+    target = dest / "meeting-assist" / "SKILL.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("mine")
+    assert cli.main(["install-skill", "--dest", str(dest)]) == 1
+    assert target.read_text() == "mine"
+    assert "--force" in capsys.readouterr().err
+    assert cli.main(["install-skill", "--dest", str(dest), "--force"]) == 0
+    assert target.read_text() != "mine"
+
+
+def test_install_skill_defaults_to_the_user_skills_dir(env, monkeypatch):
+    home = env / "home"
+    monkeypatch.setenv("HOME", str(home))
+    assert cli.main(["install-skill"]) == 0
+    assert (home / ".claude" / "skills" / "meeting-assist" / "SKILL.md").is_file()
