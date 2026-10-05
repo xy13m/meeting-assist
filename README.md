@@ -52,7 +52,25 @@ there while still hearing it yourself:
 While a Multi-Output Device is the system output, the keyboard volume keys
 do nothing. Selecting it only inside the meeting app avoids that.
 
-The microphone is not captured; your own speech does not appear.
+### Your microphone
+
+By default only the meeting audio is captured. Add `--mic` to transcribe
+your own microphone too. Your turns are labelled `Me`, translated, saved,
+and passed to the skill like everyone else's.
+
+`--mic` opens a second AssemblyAI session for the whole meeting, so
+transcription costs about twice as much. It is off unless you pass it.
+
+If you listen on laptop speakers instead of headphones, the microphone
+also hears the other participants. Add `--speakers`: a microphone turn
+whose words mostly match what the meeting audio said at the same moment
+is dropped as an echo and logged in `meeting-assist.log`. Limits:
+
+- your own turns appear about three seconds late;
+- when you and someone else talk at once, your turn may contain some of
+  their words;
+- remote speech that the meeting-audio session did not pick up (too
+  quiet, say) has nothing to match against, so its echo shows up as yours.
 
 ## Configuration
 
@@ -70,6 +88,7 @@ Settings come from four places. Later ones override earlier ones.
    model = "claude-haiku-4-5"
    target = "zh-TW"
    device = "BlackHole"
+   mic = ""
    out = "~/meetings"
    ```
 
@@ -77,12 +96,16 @@ Settings come from four places. Later ones override earlier ones.
    below).
 3. Environment variables: `ASSEMBLYAI_API_KEY`, `ANTHROPIC_API_KEY`,
    `OPENAI_API_KEY`, `MEETING_ASSIST_MODEL`, `MEETING_ASSIST_TARGET`,
-   `MEETING_ASSIST_DEVICE`, `MEETING_ASSIST_OUT`.
+   `MEETING_ASSIST_DEVICE`, `MEETING_ASSIST_MIC`, `MEETING_ASSIST_OUT`.
 4. Command-line flags: `--model`, `--target`, `--device`, `--out`.
 
 Built-in defaults: model `claude-haiku-4-5`, target `zh-TW`, device
 `BlackHole`, output directory `meetings/` under the current directory.
 `MEETING_ASSIST_CONFIG` points at a different config file.
+
+`mic` names the input device that `--mic` uses when given without a name;
+empty means the system default input. It does not turn the microphone on
+by itself.
 
 The provider is chosen from the model name: `claude-*` uses Anthropic;
 `gpt-*`, `chatgpt-*` and the `o1`/`o3`/`o4` series use OpenAI. For any other
@@ -118,6 +141,9 @@ Options:
 | `--languages CODES` | Comma-separated AssemblyAI language codes to recognise. Default `en`. |
 | `--wav FILE` | Replay a mono 16-bit WAV instead of a device, at real-time pace. |
 | `--device NAME` | Input device name substring. |
+| `--mic [NAME]` | Also transcribe your microphone. NAME is an input device name substring; without it, the `mic` setting or the system default input. |
+| `--mic-wav FILE` | Replay a mono 16-bit WAV as the microphone. |
+| `--speakers` | Drop microphone turns that only repeat the meeting audio. Use when not on headphones. Needs `--mic` or `--mic-wav`. |
 | `--out DIR` | Directory that meeting folders are created in. |
 | `--model NAME` | LLM for translation and keyterm derivation. |
 | `--target CODE` | Translation target language. |

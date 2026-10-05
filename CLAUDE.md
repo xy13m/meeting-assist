@@ -10,6 +10,7 @@ src/meeting_assist/
   config.py       defaults < config.toml < .env < environment < flags
   events.py       the only types stages exchange
   pipeline.py     routes events; depends on protocols only
+  echo.py         EchoFilter: drops microphone turns that echo the meeting audio
   audio.py        FileSource, DeviceSource (sounddevice, imported lazily)
   stt/            Transcriber protocol; assemblyai.py is the only SDK importer
   llm/            LLM protocol; anthropic.py and openai.py are the only SDK importers
@@ -49,9 +50,22 @@ Edit the skill there only.
   websocket close detected through the SDK's private `_stop_event`) share
   one consecutive-failure budget and offset turn orders so they stay unique
   within a run. A successful Begin resets the budget.
-- Turn orders are unique within a run for one AssemblyAI session. A second
-  session (a microphone, say) must namespace its orders before sharing
-  Store or Display.
+- Turn orders are unique within a run. The microphone session
+  (`listen --mic`) starts at `MIC_ORDER_BASE` (1,000,000) through
+  `TranscriberSettings.order_base`, has speaker labels off, and labels
+  every turn `ME_SPEAKER` (`Me`). Turn order is not speech order across
+  sessions: wherever turns are listed, sort with `transcript.time_order`
+  (`started_at`, then `turn_order`).
+- System audio is the primary source. If it gives up, the run stops; if
+  the microphone gives up or its thread raises, the status bar and the
+  log say so and system audio keeps going.
+- `EchoFilter` is pass-through unless `--speakers`. Then microphone
+  partials are not shown, and a microphone final turn is held until it
+  matches a system-audio turn (dropped, logged, never written to
+  `transcript.jsonl`) or `hold` seconds pass after it ends.
+- `--mic` keeps a second billed AssemblyAI session open for the whole
+  meeting, so it is opt-in on every run; the `mic` setting only names
+  the device.
 - Speaker revisions arrive at session end. `transcript.md` is appended live
   and rewritten with revised labels on close through a temp file, fsync,
   and rename; `transcript.jsonl` keeps the raw sequence including revision
@@ -77,21 +91,23 @@ Edit the skill there only.
 ## transcript.jsonl: the contract with the skill
 
 `skill/SKILL.md` greps the file for the literal `"type": "turn"` and reads
-the fields of those lines, and reads the first line for `target`. Records
+the fields of those lines, and reads the first line for `target` and `mic`. Records
 are written with `json.dumps(record, ensure_ascii=False)` and its default
 separators, which is what puts the space after the colon. Do not change the
 separators. Changing any shape below means updating SKILL.md, this file,
 and `tests/test_skill.py`.
 
 ```
-{"type": "meta", "version": 1, "started_at": ISO, "target": "zh-TW", "languages": ["en"]}
+{"type": "meta", "version": 1, "started_at": ISO, "target": "zh-TW", "languages": ["en"], "mic": false}
 {"type": "turn", "turn_order": int, "speaker": str, "text": str, "started_at": ISO, "ended_at": ISO, "language": str | null}
 {"type": "translation", "turn_order": int, "text": str, "error": str | null}
 {"type": "revision", "turn_order": int, "speaker": str}
 ```
 
-`meta` is always the first line. A `revision` may precede the `turn` it
-refers to when the turn was held (unformatted fallback) until shutdown.
+`meta` is always the first line. `mic` was added without a version bump;
+readers treat a missing `mic` as false. A `revision` may precede the
+`turn` it refers to when the turn was held (unformatted fallback) until
+shutdown.
 
 ## Packaging
 

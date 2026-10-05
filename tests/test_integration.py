@@ -21,10 +21,11 @@ needs_keys = pytest.mark.skipif(
 )
 
 
-def make_speech_wav(path: Path) -> None:
+def make_speech_wav(
+    path: Path, text: str = "Hello everyone. Let's start with the Sentinel launch date."
+) -> None:
     """Use macOS text-to-speech to build a short English WAV (16 kHz mono int16)."""
     aiff = path.with_suffix(".aiff")
-    text = "Hello everyone. Let's start with the Sentinel launch date."
     subprocess.run(["say", "-o", str(aiff), text], check=True)
     subprocess.run(
         ["afconvert", "-f", "WAVE", "-d", "LEI16@16000", "-c", "1", str(aiff), str(path)],
@@ -55,3 +56,21 @@ def test_wav_end_to_end_then_summarize(tmp_path: Path, monkeypatch):
     assert cli.main(["summarize", str(meeting_dir)]) == 0
     summary = (meeting_dir / "summary.md").read_text()
     assert "## Summary" in summary and "## Action items" in summary
+
+
+@needs_keys
+def test_wav_and_mic_wav_end_to_end(tmp_path: Path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MEETING_ASSIST_CONFIG", str(tmp_path / "no-config.toml"))
+    system = tmp_path / "system.wav"
+    mine = tmp_path / "mine.wav"
+    make_speech_wav(system)
+    make_speech_wav(mine, "Thanks. I can confirm the launch date by Friday.")
+    out = tmp_path / "m"
+    args = ["listen", "--wav", str(system), "--mic-wav", str(mine), "--out", str(out)]
+    assert cli.main(args) == 0
+    meeting_dir = next(out.iterdir())
+    lines = [json.loads(x) for x in (meeting_dir / "transcript.jsonl").read_text().splitlines()]
+    assert lines[0]["mic"] is True
+    speakers = {r["speaker"] for r in lines if r["type"] == "turn"}
+    assert "Me" in speakers and speakers - {"Me"}
