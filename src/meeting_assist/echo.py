@@ -49,6 +49,7 @@ class EchoFilter:
         threshold: float = 0.6,
         hold: float = 3.0,
         window: float = 2.0,
+        lead: float = 0.5,
         tick: float = 0.5,
         memory: float = 60.0,
         clock: Callable[[], datetime] = datetime.now,
@@ -59,6 +60,7 @@ class EchoFilter:
         self._threshold = threshold
         self._hold = timedelta(seconds=hold)
         self._window = timedelta(seconds=window)
+        self._lead = timedelta(seconds=lead)
         self._tick = tick
         self._memory = timedelta(seconds=memory)
         self._clock = clock
@@ -141,10 +143,13 @@ class EchoFilter:
         self._held = still_held
 
     def _candidates(self, turn: FinalTurn) -> list[FinalTurn | PartialTurn]:
+        # An echo overlaps the speech it repeats. A system turn that ended
+        # more than `lead` before this one started is something the user
+        # answered, and an answer often repeats the question's words.
         near: list[FinalTurn | PartialTurn] = [
             f
             for f in self._finals
             if f.started_at - self._window <= turn.ended_at
-            and f.ended_at + self._window >= turn.started_at
+            and f.ended_at + self._lead >= turn.started_at
         ]
         return near + list(self._partials.values())

@@ -3,6 +3,7 @@
 import io
 import json
 import threading
+import time
 from datetime import datetime, timedelta
 from io import StringIO
 from pathlib import Path
@@ -368,3 +369,21 @@ def test_build_pipeline_opens_the_mic_session_at_the_mic_sample_rate(tmp_path: P
     assert (system.sample_rate, system.speaker, system.order_base) == (16000, None, 0)
     assert (mic.sample_rate, mic.speaker, mic.order_base) == (48000, ME_SPEAKER, MIC_ORDER_BASE)
     assert mic.keyterms == ["Sentinel"]
+
+
+def test_failed_mic_source_is_closed_while_system_audio_runs(tmp_path: Path):
+    seen = {}
+
+    class WaitForMicThread(ScriptedTranscriber):
+        def run(self, source, on_event, on_status):
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and any(
+                t.name == "mic-transcriber" for t in threading.enumerate()
+            ):
+                time.sleep(0.01)
+            seen["mic_closed"] = pipeline.mic_source.closed
+
+    mic = ScriptedTranscriber([], raises=RuntimeError("socket exploded"))
+    pipeline = two_source_pipeline(tmp_path, WaitForMicThread([]), mic)
+    pipeline.run()
+    assert seen == {"mic_closed": True}

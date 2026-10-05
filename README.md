@@ -70,7 +70,10 @@ is dropped as an echo and logged in `meeting-assist.log`. Limits:
 - when you and someone else talk at once, your turn may contain some of
   their words;
 - remote speech that the meeting-audio session did not pick up (too
-  quiet, say) has nothing to match against, so its echo shows up as yours.
+  quiet, say) has nothing to match against, so its echo shows up as yours;
+- after either session reconnects, its timestamps can run one to three
+  seconds late, so echoes may be kept and the transcript order may be off
+  by a line or two until the meeting ends.
 
 ## Configuration
 

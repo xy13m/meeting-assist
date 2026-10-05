@@ -120,6 +120,10 @@ class Pipeline:
         except Exception as exc:
             log.exception("microphone transcriber failed")
             self.mic_abort_reason = str(exc) or type(exc).__name__
+        finally:
+            # Stop capturing now: a device nobody reads keeps filling its
+            # queue and inflates the dropped count for the rest of the run.
+            self.mic_source.close()
         reason = self.mic_abort_reason or self.mic_transcriber.abort_reason
         if reason:
             self.display.set_status(mic=f"stopped: {reason}")

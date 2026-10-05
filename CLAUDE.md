@@ -62,7 +62,12 @@ Edit the skill there only.
 - `EchoFilter` is pass-through unless `--speakers`. Then microphone
   partials are not shown, and a microphone final turn is held until it
   matches a system-audio turn (dropped, logged, never written to
-  `transcript.jsonl`) or `hold` seconds pass after it ends.
+  `transcript.jsonl`) or `hold` seconds pass after it ends. A system turn
+  that ended more than `lead` (0.5 s) before the microphone turn started
+  is never a match: a reply often repeats the question's words.
+- Each session anchors its timestamps at the wall-clock time of Begin.
+  After a reconnect the audio queued during the gap is streamed first, so
+  that session's timestamps run late by about the gap. Known, not fixed.
 - `--mic` keeps a second billed AssemblyAI session open for the whole
   meeting, so it is opt-in on every run; the `mic` setting only names
   the device.

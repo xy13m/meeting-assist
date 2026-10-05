@@ -194,3 +194,15 @@ def test_ticker_releases_held_turns_without_new_events():
         time.sleep(0.01)
     f.close()
     assert out == [mine]
+
+
+def test_reply_that_repeats_the_question_is_kept():
+    f, out, clock, drops = make()
+    f.on_system(sys_turn(0, "Can we ship on Friday, yes or no?", 0, 3))
+    clock.now = at(4.6)
+    mine = mic_turn(0, "Yes, we can ship on Friday.", 3.6, 4.6)
+    f.on_mic(mine)
+    clock.now = at(7.6)
+    f.check()
+    assert out[-1] == mine
+    assert drops == []
