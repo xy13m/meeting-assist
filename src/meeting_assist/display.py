@@ -10,9 +10,11 @@ from rich.console import Console, Group
 from rich.live import Live
 from rich.text import Text
 
-from meeting_assist.events import FinalTurn, PartialTurn, Translation
+from meeting_assist.events import ME_SPEAKER, FinalTurn, PartialTurn, Translation
+from meeting_assist.transcript import time_order
 
 PALETTE = ["cyan", "green", "magenta", "yellow", "blue", "red"]
+ME_STYLE = "bold white"
 UNKNOWN = {"?", "PENDING"}
 INDENT = " " * 10
 
@@ -52,12 +54,15 @@ class Display:
         self._lock = threading.RLock()
         self._styles: dict[str, str] = {}
         self._pending: dict[int, FinalTurn] = {}
-        self._partial: PartialTurn | None = None
+        # One in-progress line per source, keyed by "is the user's own".
+        self._partials: dict[bool, PartialTurn] = {}
         self._status: dict[str, Any] = {"connection": "starting", "backlog": 0, "dropped": 0}
         self._started = time.monotonic()
 
     def speaker_style(self, label: str) -> str:
         with self._lock:
+            if label == ME_SPEAKER:
+                return ME_STYLE
             if label in UNKNOWN:
                 return "dim"
             if label not in self._styles:
@@ -70,22 +75,22 @@ class Display:
 
     def stop(self) -> None:
         with self._lock:
-            for order in sorted(self._pending):
-                turn = self._pending[order]
+            for turn in sorted(self._pending.values(), key=time_order):
                 self._live.console.print(render_turn(turn, None, self.speaker_style(turn.speaker)))
             self._pending.clear()
         self._live.stop()
 
     def show_partial(self, p: PartialTurn) -> None:
         with self._lock:
-            self._partial = p
+            self._partials[p.speaker == ME_SPEAKER] = p
             self._refresh()
 
     def show_turn(self, t: FinalTurn) -> None:
         with self._lock:
             self._pending[t.turn_order] = t
-            if self._partial is not None and self._partial.turn_order == t.turn_order:
-                self._partial = None
+            self._partials = {
+                k: p for k, p in self._partials.items() if p.turn_order != t.turn_order
+            }
             self._refresh()
 
     def show_translation(self, tr: Translation) -> None:
@@ -114,19 +119,23 @@ class Display:
 
     def _render(self) -> Text:
         parts: list[Text] = []
-        for order in sorted(self._pending):
-            turn = self._pending[order]
+        for turn in sorted(self._pending.values(), key=time_order):
             parts.append(render_turn(turn, None, self.speaker_style(turn.speaker)))
-        if self._partial is not None:
-            label = "?" if self._partial.speaker in UNKNOWN else self._partial.speaker
-            parts.append(Text(f"{INDENT}{label}  {self._partial.text}", style="dim"))
+        for partial in self._partials.values():
+            label = "?" if partial.speaker in UNKNOWN else partial.speaker
+            parts.append(Text(f"{INDENT}{label}  {partial.text}", style="dim"))
         elapsed = int(time.monotonic() - self._started)
         hours, remainder = divmod(elapsed, 3600)
         minutes, seconds = divmod(remainder, 60)
+        connection = self._status["connection"]
+        if "mic" in self._status:
+            connection = f"sys {connection} · mic {self._status['mic']}"
         status = (
-            f"{hours}:{minutes:02d}:{seconds:02d}  {self._status['connection']}  "
+            f"{hours}:{minutes:02d}:{seconds:02d}  {connection}  "
             f"backlog {self._status['backlog']}  dropped {self._status['dropped']}"
         )
+        if "echo" in self._status:
+            status += f"  echo {self._status['echo']}"
         parts.append(Text(status, style="reverse"))
         return Text("\n").join(parts)
 

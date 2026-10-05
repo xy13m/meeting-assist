@@ -1,4 +1,5 @@
 import io
+from datetime import timedelta
 
 from rich.console import Console
 
@@ -95,4 +96,57 @@ def test_partial_and_status_render_in_live_area():
     assert "connected" in text and "backlog 2" in text and "dropped 0" in text
     d.show_turn(FinalTurn(1, "B", "So the plan is set.", T0, T0))
     assert "so the plan" not in d.live_text()  # partial replaced by its final turn
+    d.stop()
+
+
+def test_me_has_a_reserved_style_outside_the_palette():
+    d = Display(make_console()[0])
+    assert d.speaker_style("Me") == "bold white"
+    assert d.speaker_style("A") == "cyan"  # palette not consumed by Me
+
+
+def test_pending_turns_render_in_start_time_order():
+    console, _ = make_console()
+    d = Display(console)
+    d.start()
+    late = T0 + timedelta(seconds=5)
+    d.show_turn(FinalTurn(0, "A", "Later.", late, late))
+    d.show_turn(FinalTurn(1_000_000, "Me", "Earlier.", T0, T0))
+    text = d.live_text()
+    assert text.index("Earlier.") < text.index("Later.")
+    d.stop()
+
+
+def test_partials_from_both_sources_show_together():
+    console, _ = make_console()
+    d = Display(console)
+    d.start()
+    d.show_partial(PartialTurn(3, "A", "so the plan"))
+    d.show_partial(PartialTurn(1_000_000, "Me", "right"))
+    text = d.live_text()
+    assert "A  so the plan" in text and "Me  right" in text
+    d.show_turn(FinalTurn(1_000_000, "Me", "Right.", T0, T0))
+    text = d.live_text()
+    assert "Me  right" not in text and "A  so the plan" in text
+    d.stop()
+
+
+def test_status_line_shows_both_connections_and_echo_count():
+    console, _ = make_console()
+    d = Display(console)
+    d.start()
+    d.set_status(connection="connected", mic="connected", echo=2)
+    text = d.live_text()
+    assert "sys connected · mic connected" in text
+    assert "echo 2" in text
+    d.stop()
+
+
+def test_status_line_without_mic_is_unchanged():
+    console, _ = make_console()
+    d = Display(console)
+    d.start()
+    d.set_status(connection="connected")
+    text = d.live_text()
+    assert "sys " not in text and "echo" not in text
     d.stop()
