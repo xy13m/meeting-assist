@@ -5,6 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
+ME_SPEAKER = "Me"
+"""Speaker label of every turn from the user's own microphone."""
+
+MIC_ORDER_BASE = 1_000_000
+"""First turn order of the microphone session, so its orders never meet
+those of the system-audio session."""
+
 
 @dataclass(frozen=True)
 class PartialTurn:

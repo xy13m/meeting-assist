@@ -34,6 +34,7 @@ def build_params(
     keyterms: list[str],
     prompt: str,
     languages: tuple[str, ...] = DEFAULT_LANGUAGES,
+    speaker_labels: bool = True,
 ) -> StreamingParameters:
     """One language code forces a monolingual session. Two or more let the
     model switch between them mid-sentence; language detection is turned on
@@ -41,7 +42,7 @@ def build_params(
     return StreamingParameters(
         sample_rate=sample_rate,
         speech_model=SpeechModel.universal_3_5_pro,
-        speaker_labels=True,
+        speaker_labels=speaker_labels,
         format_turns=True,
         language_codes=list(languages),
         language_detection=True if len(languages) > 1 else None,
@@ -61,9 +62,12 @@ class TurnMapper:
     session end.
     """
 
-    def __init__(self, session_start: datetime, order_offset: int = 0) -> None:
+    def __init__(
+        self, session_start: datetime, order_offset: int = 0, speaker: str | None = None
+    ) -> None:
         self._start = session_start
         self._offset = order_offset
+        self._speaker = speaker
         self._finalised: set[int] = set()
         self._held: dict[int, FinalTurn] = {}
         self._next_expected = order_offset
@@ -86,7 +90,7 @@ class TurnMapper:
                 self._finalise(order)
             return []
         self.last_order = max(self.last_order, order)
-        speaker = event.speaker_label or "?"
+        speaker = self._speaker or event.speaker_label or "?"
         if not event.end_of_turn:
             return [PartialTurn(order, speaker, text)]
         if order in self._finalised:
@@ -129,6 +133,8 @@ class TurnMapper:
         self._next_expected = max(self._next_expected, order + 1)
 
     def map_revision(self, event: SpeakerRevisionEvent) -> list[SpeakerRevision]:
+        if self._speaker is not None:
+            return []
         return [
             SpeakerRevision(item.turn_order + self._offset, item.speaker_label or "?")
             for item in event.revisions
@@ -143,7 +149,11 @@ class AssemblyAITranscriber:
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
         self._params = build_params(
-            settings.sample_rate, settings.keyterms, settings.prompt, settings.languages
+            settings.sample_rate,
+            settings.keyterms,
+            settings.prompt,
+            settings.languages,
+            speaker_labels=settings.speaker is None,
         )
         self._factory = client_factory or (
             lambda: StreamingClient(StreamingClientOptions(api_key=settings.api_key))
@@ -155,17 +165,20 @@ class AssemblyAITranscriber:
         self._on_status: Callable[[str], None] = lambda s: None
         self._stop = threading.Event()
         self._failed = threading.Event()
-        self._mapper = TurnMapper(now())
+        self._speaker = settings.speaker
+        self._mapper = TurnMapper(now(), order_offset=settings.order_base, speaker=self._speaker)
         self._client: Any | None = None
         self._reconnects = 0
-        self._high_order = -1
+        self._high_order = settings.order_base - 1
         self.abort_reason: str | None = None
 
     # -- event handlers (run on the SDK read thread) -------------------------
 
     def _on_begin(self, _client: Any, event: BeginEvent) -> None:
         self._high_order = max(self._high_order, self._mapper.last_order)
-        self._mapper = TurnMapper(self._now(), order_offset=self._high_order + 1)
+        self._mapper = TurnMapper(
+            self._now(), order_offset=self._high_order + 1, speaker=self._speaker
+        )
         self._reconnects = 0
         self._on_status(f"connected {event.id[:8]}")
 

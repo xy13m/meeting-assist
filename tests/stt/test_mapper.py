@@ -143,3 +143,23 @@ def test_build_params_multilingual_turns_on_language_detection():
     p = build_params(16000, [], "", languages=("en", "zh"))
     assert p.language_codes == ["en", "zh"]
     assert p.language_detection is True
+
+
+def test_fixed_speaker_and_order_offset_replace_recogniser_values():
+    m = TurnMapper(T0, order_offset=1_000_000, speaker="Me")
+    out = m.map_turn(
+        turn(turn_order=2, end_of_turn=True, turn_is_formatted=True, transcript="Yes.")
+    )
+    assert [(e.turn_order, e.speaker) for e in out] == [(1_000_002, "Me")]
+    assert m.map_turn(turn(turn_order=3)) == [PartialTurn(1_000_003, "Me", "hello there")]
+
+
+def test_fixed_speaker_ignores_speaker_revisions():
+    m = TurnMapper(T0, speaker="Me")
+    event = SpeakerRevisionEvent(revisions=[{"turn_order": 0, "speaker_label": "B", "words": []}])
+    assert m.map_revision(event) == []
+
+
+def test_build_params_can_turn_speaker_labels_off():
+    assert build_params(16000, [], "").speaker_labels is True
+    assert build_params(16000, [], "", speaker_labels=False).speaker_labels is False

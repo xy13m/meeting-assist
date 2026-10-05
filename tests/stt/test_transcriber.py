@@ -240,3 +240,31 @@ def test_speaker_revisions_are_forwarded_with_offset():
 
     make().run(Source(0), events.append, lambda s: None)
     assert events == [SpeakerRevision(0, "B")]
+
+
+def test_order_base_and_fixed_speaker_survive_a_reconnect():
+    events = []
+
+    class Source(ListSource):
+        def chunks(self):
+            c = FakeClient.instances[0]
+            c.handlers[StreamingEvents.Turn](
+                c, turn(turn_order=0, end_of_turn=True, turn_is_formatted=True)
+            )
+            yield b"a"
+            c.handlers[StreamingEvents.Error](c, StreamingError("boom"))
+            yield b"b"
+            c2 = FakeClient.instances[1]
+            c2.handlers[StreamingEvents.Turn](
+                c2, turn(turn_order=0, end_of_turn=True, turn_is_formatted=True)
+            )
+            yield b"c"
+
+    make(speaker="Me", order_base=1_000_000).run(Source(0), events.append, lambda s: None)
+    finals = [e for e in events if isinstance(e, FinalTurn)]
+    assert [(e.turn_order, e.speaker) for e in finals] == [(1_000_000, "Me"), (1_000_001, "Me")]
+
+
+def test_fixed_speaker_turns_speaker_labels_off():
+    assert make(speaker="Me")._params.speaker_labels is False
+    assert make()._params.speaker_labels is True

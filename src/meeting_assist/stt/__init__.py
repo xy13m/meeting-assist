@@ -25,6 +25,11 @@ class TranscriberSettings:
     languages: tuple[str, ...] = DEFAULT_LANGUAGES
     max_reconnects: int = 5
     reconnect_delay: float = 1.0
+    # A fixed speaker label for every turn (the microphone session); None
+    # keeps the recogniser's diarization labels.
+    speaker: str | None = None
+    # Added to every turn order so two sessions in one run never collide.
+    order_base: int = 0
 
 
 class Transcriber(Protocol):
