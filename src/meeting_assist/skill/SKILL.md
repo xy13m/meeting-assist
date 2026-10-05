@@ -22,10 +22,13 @@ under the directory where `meeting-assist listen` was started) containing:
   `"type": "turn"` with a space after the colon.
   - `{"type": "meta", ...}`: always the first line. `target` is the
     translation target language code (for example `zh-TW`), `languages` the
-    codes the recogniser was asked to listen for.
+    codes the recogniser was asked to listen for. `mic` is true when the
+    user's own microphone is recorded too; older files have no `mic`, which
+    means false.
   - `{"type": "turn", ...}`: one finished turn. Fields: `turn_order` (int,
-    unique within the run), `speaker` (a provisional label such as `A`),
-    `text` (what was said, in the language spoken), `started_at` and
+    unique within the run), `speaker` (a provisional label such as `A`,
+    or `Me` for the user's own microphone), `text` (what was said, in the
+    language spoken), `started_at` and
     `ended_at` (ISO timestamps), `language` (the recogniser's guess, or
     null).
   - `{"type": "translation", ...}`: the translation of a turn, about a
@@ -45,7 +48,8 @@ under the directory where `meeting-assist listen` was started) containing:
 2. Read `meeting.md` in that directory if it exists. It is the context the
    user wrote before the meeting: agenda, participants, product names,
    terms. If it is missing, say so in one line and carry on.
-3. Read the `meta` line to learn the target language:
+3. Read the `meta` line to learn the target language and whether the
+   user's microphone is recorded (`mic`):
    `head -n 1 <dir>/transcript.jsonl`. The summary line of every
    suggestion is written in that language.
 4. Read the last 20 turns already recorded, if any, so you know where the
@@ -76,10 +80,21 @@ characters. Ignore `language`: it is the recogniser's guess and it labels
 plain English turns `"zh"` often enough to mislead; judge the language
 from `text`.
 
-First decide whether the turn is complete:
+If `speaker` is `Me`, the user said it. Reply with exactly one line and
+no suggestion:
+
+```
+(you) <what they said, in one line in the target language>
+```
+
+Keep it in mind: do not later suggest an answer to a question the user
+already answered, and build on what they said.
+
+Otherwise, first decide whether the turn is complete:
 
 - **Complete**: `text` ends with `.`, `?`, `!`, `。`, `？` or `！`, or the
-  speaker differs from the previous event's speaker.
+  speaker differs from the previous event's speaker (`Me` counts as a
+  speaker).
 - **Fragment**: anything else. The recogniser cuts turns at about ten
   seconds, so one thought often arrives as several lines.
 
@@ -115,8 +130,10 @@ Rules for the suggestion:
   label is which person unless the user told you.
 - Keep every reply this short. Hundreds of events arrive per hour and each
   word stays in context.
-- The user cannot be heard: the CLI records system audio only. Do not
-  assume they have or have not already answered.
+- When `mic` is false or missing, the user cannot be heard: the CLI
+  records system audio only. Do not assume they have or have not already
+  answered. When `mic` is true, `Me` turns are what they said; with
+  `--speakers` those turns arrive a few seconds late.
 
 ## After context compaction
 

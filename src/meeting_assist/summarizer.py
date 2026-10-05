@@ -17,7 +17,9 @@ MAX_TOKENS = 4000
 _SYSTEM = (
     "You write minutes for a business meeting from a speech-recognition "
     "transcript. Speaker labels are letters, not names; use names only when the "
-    "meeting context makes the mapping clear. Do not invent facts that are not "
+    "meeting context makes the mapping clear. The speaker labelled Me is the "
+    "user who recorded the meeting; use their name only if the meeting context "
+    "gives it. Do not invent facts that are not "
     "in the transcript or the context.\n\n"
     "Output Markdown with exactly two sections and nothing else:\n\n"
     "## Summary\n"

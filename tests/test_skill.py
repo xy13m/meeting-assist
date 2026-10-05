@@ -28,3 +28,6 @@ def test_skill_documents_every_turn_field_and_the_grep_literal():
     assert '"type": "meta"' in text
     assert "meeting-assist listen" in text
     assert "rtst" not in text
+    assert "`mic`" in text
+    assert "`Me`" in text
+    assert "(you)" in text

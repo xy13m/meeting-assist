@@ -73,3 +73,9 @@ def test_summarize_with_no_turns_raises(tmp_path: Path):
     (d / "transcript.jsonl").write_text(transcript.encode(transcript.meta_record(T0, "en", ["en"])))
     with pytest.raises(EmptyTranscript):
         summarize(d, FakeLLM(), for_code("en"))
+
+
+def test_system_prompt_explains_the_me_label():
+    _, entries = transcript.assemble([transcript.turn_record(FinalTurn(0, "Me", "Hi.", T0, T0))])
+    system, _ = build_prompt(entries, "", for_code("en"))
+    assert "labelled Me is the user who recorded the meeting" in system
