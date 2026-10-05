@@ -14,7 +14,13 @@ from tests.stt.fakes import FakeClient
 @pytest.fixture
 def env(monkeypatch, tmp_path: Path):
     """Isolated config: no config file, no .env, keys set, cwd in tmp_path."""
-    for name in ("MEETING_ASSIST_MODEL", "MEETING_ASSIST_TARGET", "MEETING_ASSIST_OUT"):
+    for name in (
+        "MEETING_ASSIST_MODEL",
+        "MEETING_ASSIST_TARGET",
+        "MEETING_ASSIST_OUT",
+        "MEETING_ASSIST_DEVICE",
+        "MEETING_ASSIST_MIC",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("MEETING_ASSIST_CONFIG", str(tmp_path / "no-config.toml"))
     monkeypatch.setenv("ASSEMBLYAI_API_KEY", "a")
@@ -42,6 +48,9 @@ def test_parse_args_listen_defaults():
     assert ns.target is None
     assert ns.no_keyterms is False
     assert ns.languages == ("en",)
+    assert ns.mic is None
+    assert ns.mic_wav is None
+    assert ns.speakers is False
 
 
 def test_parse_args_listen_flags():
@@ -207,6 +216,93 @@ def test_listen_reports_early_stop_and_exits_2(env, fake_llm, monkeypatch, capsy
     assert cli.main(["listen", "--wav", str(wav)]) == 2
     err = capsys.readouterr().err
     assert "Stopped early" in err and "gave up reconnecting" in err
+
+
+def test_parse_args_mic_forms():
+    assert cli.parse_args(["listen", "--mic"]).mic == ""
+    assert cli.parse_args(["listen", "--mic", "PodMic"]).mic == "PodMic"
+    ns = cli.parse_args(["listen", "--mic-wav", "me.wav", "--speakers"])
+    assert ns.mic_wav == Path("me.wav") and ns.speakers is True
+
+
+def test_speakers_without_mic_is_a_usage_error(env, fake_llm, capsys):
+    assert cli.main(["listen", "--speakers"]) == 1
+    assert "--speakers" in capsys.readouterr().err
+    assert not (env / "meetings").exists()
+
+
+def test_listen_reports_missing_mic_and_closes_the_system_source(
+    env, fake_llm, monkeypatch, capsys
+):
+    opened = []
+
+    class FakeDevice:
+        sample_rate = 16000
+        dropped = 0
+
+        def __init__(self, name, hint=None):
+            if name == "NoSuchMic":
+                raise DeviceNotFound("No input device matching 'NoSuchMic'")
+            self.closed = False
+            opened.append(self)
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr(cli, "DeviceSource", FakeDevice)
+    assert cli.main(["listen", "--mic", "NoSuchMic"]) == 1
+    assert "NoSuchMic" in capsys.readouterr().err
+    assert not (env / "meetings").exists()
+    assert [d.closed for d in opened] == [True]
+
+
+def recording_factory(built):
+    def factory(settings, client_factory=None):
+        built.append(settings)
+        return AssemblyAITranscriber(settings, client_factory=FakeClient)
+
+    return factory
+
+
+def test_listen_without_mic_builds_one_transcriber(env, fake_llm, monkeypatch):
+    built = []
+    monkeypatch.setattr(cli, "create_transcriber", recording_factory(built))
+    wav = env / "a.wav"
+    write_wav(wav, 16000, 1600)
+    assert cli.main(["listen", "--wav", str(wav)]) == 0
+    assert [s.speaker for s in built] == [None]
+
+
+def test_listen_with_mic_wav_builds_two_transcribers_and_marks_meta(env, fake_llm, monkeypatch):
+    built = []
+    monkeypatch.setattr(cli, "create_transcriber", recording_factory(built))
+    wav = env / "a.wav"
+    mic = env / "me.wav"
+    write_wav(wav, 16000, 1600)
+    write_wav(mic, 48000, 4800)
+    assert cli.main(["listen", "--wav", str(wav), "--mic-wav", str(mic)]) == 0
+    assert [(s.speaker, s.sample_rate) for s in built] == [(None, 16000), ("Me", 48000)]
+    meeting_dir = next((env / "meetings").iterdir())
+    meta = json.loads((meeting_dir / "transcript.jsonl").read_text().splitlines()[0])
+    assert meta["mic"] is True
+
+
+def test_listen_mic_without_name_uses_the_mic_setting(env, fake_llm, monkeypatch):
+    names = []
+
+    class FakeDevice:
+        def __init__(self, name, hint=None):
+            names.append(name)
+            raise DeviceNotFound("stop here")
+
+    monkeypatch.setattr(cli, "DeviceSource", FakeDevice)
+    wav = env / "a.wav"
+    write_wav(wav, 16000, 1600)
+    monkeypatch.setenv("MEETING_ASSIST_MIC", "PodMic")
+    assert cli.main(["listen", "--wav", str(wav), "--mic"]) == 1
+    monkeypatch.delenv("MEETING_ASSIST_MIC")
+    assert cli.main(["listen", "--wav", str(wav), "--mic"]) == 1
+    assert names == ["PodMic", None]
 
 
 # -- summarize -----------------------------------------------------------------

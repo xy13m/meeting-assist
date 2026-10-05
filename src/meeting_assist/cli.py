@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from meeting_assist import __version__
-from meeting_assist.audio import AudioSource, DeviceNotFound, DeviceSource, FileSource
+from meeting_assist.audio import MIC_HINT, AudioSource, DeviceNotFound, DeviceSource, FileSource
 from meeting_assist.config import ConfigError, Settings, load_settings
 from meeting_assist.context import MeetingContext, derive_keyterms, load_context
 from meeting_assist.language import for_code
@@ -55,6 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
     listen.add_argument("--context", type=Path, help="meeting context Markdown file")
     listen.add_argument("--device", help="input device name substring (default: BlackHole)")
     listen.add_argument("--wav", type=Path, help="replay a mono 16-bit WAV instead of a device")
+    listen.add_argument(
+        "--mic",
+        nargs="?",
+        const="",
+        metavar="NAME",
+        help="also transcribe your microphone; NAME is an input device name substring "
+        "(default: the mic setting, else the system default input)",
+    )
+    listen.add_argument("--mic-wav", type=Path, help="replay a mono 16-bit WAV as the microphone")
+    listen.add_argument(
+        "--speakers",
+        action="store_true",
+        help="drop microphone turns that only repeat the meeting audio (no headphones)",
+    )
     listen.add_argument("--out", type=Path, help="directory for meeting folders")
     _add_model_and_target(listen)
     listen.add_argument("--no-keyterms", action="store_true", help="skip keyterm derivation")
@@ -112,8 +126,23 @@ def _open_source(args: argparse.Namespace, settings: Settings) -> AudioSource:
         raise UsageError(f"cannot open audio source {name}: {exc}") from exc
 
 
+def _open_mic(args: argparse.Namespace, settings: Settings) -> AudioSource | None:
+    if args.mic_wav is None and args.mic is None:
+        return None
+    name = args.mic or settings.mic or None
+    try:
+        if args.mic_wav:
+            return FileSource(args.mic_wav)
+        return DeviceSource(name, hint=MIC_HINT)
+    except (DeviceNotFound, ValueError, OSError, wave.Error) as exc:
+        label = args.mic_wav or name or "default input device"
+        raise UsageError(f"cannot open microphone {label}: {exc}") from exc
+
+
 def run_listen(args: argparse.Namespace) -> int:
     settings = _settings(args)
+    if args.speakers and args.mic is None and args.mic_wav is None:
+        raise UsageError("--speakers needs --mic or --mic-wav")
     if not settings.keys.assemblyai:
         raise UsageError("ASSEMBLYAI_API_KEY is not set (or [keys] assemblyai in config.toml)")
     llm = _llm(settings)
@@ -127,8 +156,17 @@ def run_listen(args: argparse.Namespace) -> int:
             raise UsageError(f"cannot read context file {args.context}: {exc}") from exc
 
     source = _open_source(args, settings)
+    try:
+        mic_source = _open_mic(args, settings)
+    except UsageError:
+        source.close()
+        raise
     store = Store(
-        settings.out, target=target.code, languages=args.languages, context_path=args.context
+        settings.out,
+        target=target.code,
+        languages=args.languages,
+        context_path=args.context,
+        mic=mic_source is not None,
     )
     with file_logging(store.meeting_dir / "meeting-assist.log"):
         keyterms = context.keyterms
@@ -146,15 +184,17 @@ def run_listen(args: argparse.Namespace) -> int:
             languages=args.languages,
             api_key=settings.keys.assemblyai,
             transcriber_factory=create_transcriber,
+            mic_source=mic_source,
+            speakers=args.speakers,
         )
         print(f"Writing to {store.meeting_dir}  (Ctrl-C to stop)", file=sys.stderr)
         pipeline.run()
 
-    reason = pipeline.transcriber.abort_reason
-    if reason:
+    reasons = pipeline.abort_reasons()
+    for reason in reasons:
         print(f"Stopped early: {reason}", file=sys.stderr)
     print(f"Transcript saved in {store.meeting_dir}", file=sys.stderr)
-    return 2 if reason else 0
+    return 2 if reasons else 0
 
 
 # -- summarize -----------------------------------------------------------------
