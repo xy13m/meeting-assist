@@ -29,14 +29,23 @@ def read_records(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in lines if line.strip()]
 
 
-def meta_record(started_at: datetime, target: str, languages: Sequence[str]) -> dict[str, Any]:
+def meta_record(
+    started_at: datetime, target: str, languages: Sequence[str], mic: bool = False
+) -> dict[str, Any]:
     return {
         "type": "meta",
         "version": FORMAT_VERSION,
         "started_at": started_at.isoformat(),
         "target": target,
         "languages": list(languages),
+        "mic": mic,
     }
+
+
+def time_order(turn: FinalTurn) -> tuple[datetime, int]:
+    """Sort key for turns from more than one session: turn orders follow
+    speech order only within one session."""
+    return (turn.started_at, turn.turn_order)
 
 
 def turn_record(turn: FinalTurn) -> dict[str, Any]:
@@ -93,12 +102,11 @@ def assemble(records: Iterable[dict[str, Any]]) -> tuple[dict[str, Any] | None, 
         elif kind == "revision":
             revisions[rec["turn_order"]] = rec["speaker"]
     entries = []
-    for order in sorted(turns):
-        turn = turns[order]
-        speaker = revisions.get(order, turn.speaker)
+    for turn in sorted(turns.values(), key=time_order):
+        speaker = revisions.get(turn.turn_order, turn.speaker)
         if speaker != turn.speaker:
             turn = replace(turn, speaker=speaker)
-        entries.append(Entry(turn, translations.get(order)))
+        entries.append(Entry(turn, translations.get(turn.turn_order)))
     return meta, entries
 
 

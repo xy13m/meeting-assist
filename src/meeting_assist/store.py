@@ -27,6 +27,7 @@ class Store:
         target: str,
         languages: Sequence[str],
         context_path: Path | None = None,
+        mic: bool = False,
         now: Callable[[], datetime] = datetime.now,
     ) -> None:
         started = now()
@@ -42,7 +43,7 @@ class Store:
         self._translations: dict[int, Translation] = {}
         self._revisions: dict[int, str] = {}
         self._lock = threading.Lock()
-        self._record(transcript.meta_record(started, target, languages))
+        self._record(transcript.meta_record(started, target, languages, mic))
 
     def write_turn(self, turn: FinalTurn) -> None:
         with self._lock:
@@ -72,8 +73,8 @@ class Store:
         speaker labels. The rewrite goes through a temp file so a crash
         mid-write leaves the live version intact."""
         with self._lock:
-            for order in sorted(self._pending):
-                self._md.write(transcript.markdown_block(self._pending[order], None))
+            for turn in sorted(self._pending.values(), key=transcript.time_order):
+                self._md.write(transcript.markdown_block(turn, None))
             self._pending.clear()
             self._md.close()
             self._jsonl.close()

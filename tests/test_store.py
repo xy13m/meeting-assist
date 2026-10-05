@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from pathlib import Path
 
 from meeting_assist.events import FinalTurn, SpeakerRevision, Translation
@@ -46,6 +47,7 @@ def test_first_record_is_meta(tmp_path: Path):
             "started_at": "2026-09-12T10:00:00",
             "target": "ja",
             "languages": ["en", "ja"],
+            "mic": False,
         }
     ]
 
@@ -142,3 +144,19 @@ def test_close_preserves_failed_translation_marker_when_rewriting(tmp_path: Path
     store.close()
     md = (store.meeting_dir / "transcript.md").read_text()
     assert md == "**10:00:00 B**: Hello there.\n_(translation failed: boom)_\n\n"
+
+
+def test_meta_records_mic_true(tmp_path: Path):
+    store = make_store(tmp_path, mic=True)
+    store.close()
+    assert records(store)[0]["mic"] is True
+
+
+def test_close_writes_markdown_in_start_time_order(tmp_path: Path):
+    store = make_store(tmp_path)
+    late = T0 + timedelta(seconds=5)
+    store.write_turn(FinalTurn(0, "A", "Later.", late, late))
+    store.write_turn(FinalTurn(1_000_000, "Me", "Earlier.", T0, T0))
+    store.close()
+    md = (store.meeting_dir / "transcript.md").read_text()
+    assert md.index("Earlier.") < md.index("Later.")

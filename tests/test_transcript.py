@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from pathlib import Path
 
 from meeting_assist.events import FinalTurn, SpeakerRevision, Translation
@@ -32,6 +33,7 @@ def test_record_shapes():
         "started_at": "2026-09-12T10:00:00",
         "target": "zh-TW",
         "languages": ["en", "zh"],
+        "mic": False,
     }
     assert turn_record(FinalTurn(0, "A", "Hi.", T0, T0, language="en")) == {
         "type": "turn",
@@ -99,3 +101,19 @@ def test_markdown_block_shapes():
 def test_records_round_trip_through_json():
     rec = turn_record(make_turn(0, "A", "你好"))
     assert json.loads(encode(rec)) == rec
+
+
+def test_meta_record_carries_the_mic_flag():
+    assert meta_record(T0, "zh-TW", ("en",), mic=True)["mic"] is True
+
+
+def test_assemble_orders_turns_by_start_time_across_sources():
+    later = T0 + timedelta(seconds=5)
+    mid = T0 + timedelta(seconds=2)
+    records = [
+        turn_record(FinalTurn(0, "A", "First.", T0, T0)),
+        turn_record(FinalTurn(1, "A", "Third.", later, later)),
+        turn_record(FinalTurn(1_000_000, "Me", "Second.", mid, mid)),
+    ]
+    _, entries = assemble(records)
+    assert [e.turn.text for e in entries] == ["First.", "Second.", "Third."]
