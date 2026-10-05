@@ -97,3 +97,10 @@ def test_malformed_config_file_is_a_config_error(tmp_path: Path):
 def test_config_path_honours_environment_override(tmp_path: Path):
     assert config_path({"MEETING_ASSIST_CONFIG": str(tmp_path / "c.toml")}) == tmp_path / "c.toml"
     assert config_path({}) == Path("~/.config/meeting-assist/config.toml").expanduser()
+
+
+def test_mic_setting_from_config_and_environment(tmp_path: Path):
+    assert load(tmp_path).mic == ""
+    (tmp_path / "config.toml").write_text('[defaults]\nmic = "PodMic"\n')
+    assert load(tmp_path).mic == "PodMic"
+    assert load(tmp_path, env={"MEETING_ASSIST_MIC": "AirPods"}).mic == "AirPods"

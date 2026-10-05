@@ -29,6 +29,13 @@ class AudioSource(Protocol):
     def close(self) -> None: ...
 
 
+BLACKHOLE_HINT = (
+    "Install BlackHole with: brew install --cask blackhole-2ch, then create a "
+    "Multi-Output Device in Audio MIDI Setup (see README)."
+)
+MIC_HINT = "Check the microphone's name in System Settings > Sound > Input."
+
+
 class DeviceNotFound(Exception):
     pass
 
@@ -66,7 +73,11 @@ class FileSource:
         self._wav.close()
 
 
-def find_device(name_substring: str, devices: list[dict[str, Any]] | None = None) -> int:
+def find_device(
+    name_substring: str,
+    devices: list[dict[str, Any]] | None = None,
+    hint: str = BLACKHOLE_HINT,
+) -> int:
     """Index of the first input device whose name contains `name_substring`."""
     if devices is None:
         import sounddevice as sd
@@ -78,20 +89,33 @@ def find_device(name_substring: str, devices: list[dict[str, Any]] | None = None
             return index
     names = ", ".join(d["name"] for d in devices) or "(none)"
     raise DeviceNotFound(
-        f"No input device matching '{name_substring}'. Available: {names}.\n"
-        "Install BlackHole with: brew install --cask blackhole-2ch, then create a "
-        "Multi-Output Device in Audio MIDI Setup (see README)."
+        f"No input device matching '{name_substring}'. Available: {names}.\n{hint}"
     )
+
+
+def _default_input(sd: Any) -> int:
+    index = sd.default.device[0]
+    if index is None or index < 0:
+        raise DeviceNotFound(
+            "No default input device. Pick one in System Settings > Sound > Input."
+        )
+    return int(index)
 
 
 class DeviceSource:
     """Reads an input device (BlackHole by default) through sounddevice."""
 
-    def __init__(self, device_name: str = "BlackHole", queue_size: int = 200) -> None:
+    def __init__(
+        self,
+        device_name: str | None = "BlackHole",
+        queue_size: int = 200,
+        hint: str = BLACKHOLE_HINT,
+    ) -> None:
+        """`device_name` None means the system default input device."""
         import sounddevice as sd
 
         self._sd = sd
-        self._device = find_device(device_name)
+        self._device = find_device(device_name, hint=hint) if device_name else _default_input(sd)
         self.sample_rate = self._pick_rate()
         self.dropped = 0
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=queue_size)

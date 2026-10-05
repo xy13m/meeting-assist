@@ -20,6 +20,9 @@ DEFAULTS: dict[str, str] = {
     "target": "zh-TW",
     "device": "BlackHole",
     "out": "meetings",
+    # Input device `listen --mic` uses when given no name; empty means the
+    # system default input. It never turns the microphone on by itself.
+    "mic": "",
 }
 
 KEY_ENV_VARS = {
@@ -49,6 +52,7 @@ class Settings:
     target: str
     device: str
     out: Path
+    mic: str = ""
 
 
 def config_path(env: Mapping[str, str]) -> Path:
@@ -120,4 +124,5 @@ def load_settings(
         target=setting("target"),
         device=setting("device"),
         out=Path(setting("out")).expanduser(),
+        mic=setting("mic"),
     )

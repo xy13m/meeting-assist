@@ -1,10 +1,18 @@
 import sys
 import wave
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from meeting_assist.audio import CHUNK_MS, DeviceNotFound, DeviceSource, FileSource, find_device
+from meeting_assist.audio import (
+    CHUNK_MS,
+    MIC_HINT,
+    DeviceNotFound,
+    DeviceSource,
+    FileSource,
+    find_device,
+)
 from tests.conftest import write_wav
 
 
@@ -203,3 +211,24 @@ def test_device_source_status_is_logged_at_debug(fake_sd, caplog):
 def test_device_source_missing_device_raises(fake_sd):
     with pytest.raises(DeviceNotFound):
         DeviceSource("Nonexistent")
+
+
+def test_device_source_none_uses_the_default_input_device(fake_sd):
+    fake_sd.default = SimpleNamespace(device=[2, 0])
+    src = DeviceSource(None)
+    src.start()
+    assert fake_sd.streams[0].kw["device"] == 2
+    src.close()
+
+
+def test_device_source_without_a_default_input_raises(fake_sd):
+    fake_sd.default = SimpleNamespace(device=[-1, 0])
+    with pytest.raises(DeviceNotFound, match="default input"):
+        DeviceSource(None)
+
+
+def test_find_device_uses_the_given_hint():
+    with pytest.raises(DeviceNotFound) as exc:
+        find_device("NoSuchMic", DEVICES, hint=MIC_HINT)
+    assert "blackhole-2ch" not in str(exc.value)
+    assert MIC_HINT in str(exc.value)
